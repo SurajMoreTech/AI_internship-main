@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Project specific
+temp_meeting.wav
+vosk-model-small-en-us-0.15/
+*.zip
+
+# Environment variables
+.env
