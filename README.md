@@ -8,6 +8,8 @@ Designed for professionals, it streamlines the process of documenting meetings, 
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white)
 ![Groq](https://img.shields.io/badge/Groq-AI-f55036?style=flat)
 
+### 🔴 **Live Demo:** [Click Here to Access the App](https://aiinternship-maingit-7ucbm7rtdxmgrpx6objk69.streamlit.app/)
+
 ---
 
 ## ✨ Features
