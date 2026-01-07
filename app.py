@@ -1,7 +1,8 @@
 import streamlit as st
 import time
 # Import backend logic
-from backend import AudioRecorder, STTEngine, MeetingSummarizer, save_to_md, send_email_func
+from backend import AudioRecorder, STTEngine, MeetingSummarizer, save_to_md, send_email_func, SOUNDDEVICE_AVAILABLE
+from audio_recorder_streamlit import audio_recorder
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -111,11 +112,16 @@ if "transcript" not in st.session_state:
 if "summary" not in st.session_state:
     st.session_state.summary = ""
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.title(" Settings")
     
-    groq_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...")
+    groq_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...", value=os.getenv("GROQ_API_KEY", ""))
     
     st.divider()
     
@@ -148,43 +154,98 @@ col_controls, col_transcript = st.columns([1, 2])
 with col_controls:
     st.subheader("Control Panel")
     
+    # Mode Selection
+    recording_mode = "Browser-based (Cloud/Local)"
+    if SOUNDDEVICE_AVAILABLE:
+        recording_mode = st.radio("Recording Mode:", ["Server-side (Local)", "Browser-based (Cloud/Local)"], horizontal=True)
+    
     # Glassmorphism Card Effect
     with st.container(border=True):
-        if not st.session_state.is_recording:
-            st.info("Ready to capture audio session.")
-            if st.button("▶️ Start Recording", type="primary", use_container_width=True):
-                st.session_state.is_recording = True
-                st.session_state.recorder = AudioRecorder()
-                st.session_state.recorder.start()
-                st.rerun()
-        else:
-            st.warning("Microphone is live...")
-            if st.button("⏹️ Stop & Process", type="secondary", use_container_width=True):
-                st.session_state.is_recording = False
-                st.session_state.recorder.stop()
-                
-                # --- LOGIC ---
-                if not groq_key:
-                    st.error("Please enter Groq API Key first!")
-                else:
-                    with st.spinner("Transcribing with high-accuracy Whisper model..."):
-                        # Re-initialize STT with the key
-                        stt_engine = STTEngine(api_key=groq_key)
-                        # The recorder saves to "temp_meeting.wav" by default
-                        final_text = stt_engine.transcribe_file("temp_meeting.wav")
-                        st.session_state.transcript = final_text
-                
-                st.rerun()
+        if recording_mode == "Server-side (Local)":
+            if not st.session_state.is_recording:
+                st.info("Ready to capture audio session (Local Mic).")
+                if st.button("▶️ Start Recording", type="primary", use_container_width=True):
+                    st.session_state.is_recording = True
+                    st.session_state.recorder = AudioRecorder()
+                    st.session_state.recorder.start()
+                    st.rerun()
+            else:
+                st.warning("Microphone is live...")
+                if st.button("⏹️ Stop & Process", type="secondary", use_container_width=True):
+                    st.session_state.is_recording = False
+                    st.session_state.recorder.stop()
+                    
+                    # --- LOGIC ---
+                    if not groq_key:
+                        st.error("Please enter Groq API Key first!")
+                    else:
+                        with st.spinner("Transcribing with high-accuracy Whisper model..."):
+                            # Re-initialize STT with the key
+                            stt_engine = STTEngine(api_key=groq_key)
+                            # The recorder saves to "temp_meeting.wav" by default
+                            final_text = stt_engine.transcribe_file("temp_meeting.wav")
+                            
+                            # Append to existing transcript with timestamp
+                            timestamp = time.strftime("%H:%M:%S")
+                            new_entry = f"[{timestamp}] {final_text}\n"
+                            st.session_state.transcript += new_entry
+                            st.session_state.is_recording = False # Ensure state is reset
+                    
+                    st.rerun()
 
-    # Live Loop for Recording (Visual Feedback)
-    if st.session_state.is_recording:
+        else: # Browser-based
+            st.info("Click the microphone to START recording. Click it again to STOP.")
+            audio_bytes = audio_recorder(
+                text="Click to Record",
+                recording_color="#e74c3c",
+                neutral_color="#3498db",
+                icon_size="2x",
+                pause_threshold=600.0, # Record until user clicks stop (10 mins silence)
+            )
+            
+            if audio_bytes:
+                # Check if this specific audio chunk was already processed to avoid duplicates/loops
+                if "last_audio" not in st.session_state:
+                    st.session_state.last_audio = None
+                
+                if audio_bytes != st.session_state.last_audio:
+                    st.session_state.last_audio = audio_bytes
+                    
+                    if not groq_key:
+                        st.error("Please enter Groq API Key first!")
+                    else:
+                        # Save audio to file
+                        with open("temp_meeting.wav", "wb") as f:
+                            f.write(audio_bytes)
+                        
+                        with st.spinner("Transcribing..."):
+                            stt_engine = STTEngine(api_key=groq_key)
+                            final_text = stt_engine.transcribe_file("temp_meeting.wav")
+                            
+                            # Append to existing transcript with timestamp
+                            timestamp = time.strftime("%H:%M:%S")
+                            new_entry = f"[{timestamp}] {final_text}\n"
+                            st.session_state.transcript += new_entry
+                            
+                            st.success("Transcription Added!")
+
+    # Live Loop for Recording (Visual Feedback) - ONLY for Local Mode
+    if st.session_state.is_recording and recording_mode == "Server-side (Local)":
         for data in st.session_state.recorder.process_queue():
             pass
         time.sleep(0.05)
         st.rerun()
 
 with col_transcript:
-    st.subheader("📝 Transcript")
+    c_header, c_clear = st.columns([3, 1])
+    with c_header:
+        st.subheader("📝 Transcript")
+    with c_clear:
+        if st.button("🗑️ Clear", use_container_width=True):
+            st.session_state.transcript = ""
+            st.session_state.summary = ""
+            st.rerun()
+
     st.text_area(
         "Live Output", 
         value=st.session_state.transcript, 

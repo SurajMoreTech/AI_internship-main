@@ -4,7 +4,14 @@ import sys
 import json
 import wave
 from xml.parsers.expat import model
-import sounddevice as sd
+try:
+    import sounddevice as sd
+    SOUNDDEVICE_AVAILABLE = True
+except OSError:
+    # On cloud environments (headless), this might fail
+    SOUNDDEVICE_AVAILABLE = False
+except ImportError:
+    SOUNDDEVICE_AVAILABLE = False
 import vosk
 import requests
 from tqdm import tqdm
@@ -56,6 +63,10 @@ class AudioRecorder:
         self.audio_queue.put(bytes(indata))
 
     def start(self):
+        if not SOUNDDEVICE_AVAILABLE:
+            print("Audio devices not available (Server/Cloud mode).", file=sys.stderr)
+            return
+
         self.recording = True
         self.wav_file = wave.open(self.output_filename, "wb")
         self.wav_file.setnchannels(1)
@@ -100,22 +111,69 @@ class STTEngine:
         return None
 
     def transcribe_file(self, filename):
-        """Sends the full audio file to Groq Whisper for accurate transcription."""
+        """Sends audio to Groq Whisper, splitting if necessary (max 25MB)."""
         if not self.client:
             return "Error: Groq API Key missing."
         
         try:
-            with open(filename, "rb") as file:
-                transcription = self.client.audio.transcriptions.create(
-                    file=(filename, file.read()),
-                    model="whisper-large-v3", # Using the powerful Whisper model
-                    response_format="json",
-                    language="en",
-                    temperature=0.0
-                )
-            return transcription.text
+            file_size = os.path.getsize(filename)
+            LIMIT_BYTES = 20 * 1024 * 1024  # 20 MB safety limit
+            
+            if file_size < LIMIT_BYTES:
+                return self._transcribe_single(filename)
+            else:
+                print(f"File size {file_size/1024/1024:.2f}MB exceeds limit. Chunking...", file=sys.stderr)
+                chunks = self._split_wav(filename)
+                full_transcript = []
+                for i, chunk_path in enumerate(chunks):
+                    print(f"Transcribing chunk {i+1}/{len(chunks)}...", file=sys.stderr)
+                    text = self._transcribe_single(chunk_path)
+                    full_transcript.append(text)
+                    try:
+                        os.remove(chunk_path) # Cleanup
+                    except:
+                        pass
+                return " ".join(full_transcript)
         except Exception as e:
             return f"Transcription Error: {e}"
+
+    def _transcribe_single(self, filename):
+        with open(filename, "rb") as file:
+            transcription = self.client.audio.transcriptions.create(
+                file=(filename, file.read()),
+                model="whisper-large-v3",
+                response_format="json",
+                language="en",
+                temperature=0.0
+            )
+        return transcription.text
+
+    def _split_wav(self, filename, chunk_minutes=10):
+        """Splits a wav file into chunks using native wave library."""
+        chunk_files = []
+        with wave.open(filename, 'rb') as infile:
+            n_channels = infile.getnchannels()
+            sampwidth = infile.getsampwidth()
+            framerate = infile.getframerate()
+            
+            # frames per chunk
+            n_frames_per_chunk = framerate * 60 * chunk_minutes
+            
+            chunk_idx = 0
+            while True:
+                frames = infile.readframes(n_frames_per_chunk)
+                if not frames:
+                    break
+                
+                chunk_name = f"chunk_{chunk_idx}.wav"
+                chunk_files.append(chunk_name)
+                with wave.open(chunk_name, 'wb') as outfile:
+                    outfile.setnchannels(n_channels)
+                    outfile.setsampwidth(sampwidth)
+                    outfile.setframerate(framerate)
+                    outfile.writeframes(frames)
+                chunk_idx += 1
+        return chunk_files
 
 # --- 4. Summarizer (Groq) ---
 # --- 4. Summarizer (Groq) ---

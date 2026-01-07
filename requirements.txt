@@ -8,3 +8,4 @@ python-dotenv
 fpdf
 requests
 tqdm
+audio-recorder-streamlit
