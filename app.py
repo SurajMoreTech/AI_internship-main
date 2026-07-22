@@ -1,7 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import html
-import os
 import time
 from backend import (
     AudioRecorder, STTEngine, MeetingSummarizer,
@@ -823,21 +822,6 @@ def _auth_configured() -> bool:
     except FileNotFoundError:
         return False
 
-def _local_user_identity() -> tuple[str, str]:
-    """Local-mode identity (name, email) for when Google OAuth isn't wired up
-    for localhost. Read from a [local_user] section in the gitignored
-    .streamlit/secrets.toml, or LOCAL_USER_NAME / LOCAL_USER_EMAIL env vars.
-    Nothing here is committed — the public repo only ships the mechanism."""
-    name  = os.getenv("LOCAL_USER_NAME", "").strip()
-    email = os.getenv("LOCAL_USER_EMAIL", "").strip()
-    try:
-        lu = st.secrets.get("local_user", {})
-        name  = name  or str(lu.get("name", "")).strip()
-        email = email or str(lu.get("email", "")).strip()
-    except FileNotFoundError:
-        pass
-    return name, email
-
 # st.login/st.user need Streamlit >= 1.42 — degrade loudly, not with a crash
 _AUTH_SUPPORTED = hasattr(st, "login") and hasattr(st, "user")
 _AUTH = _auth_configured() and _AUTH_SUPPORTED
@@ -939,39 +923,20 @@ with st.sidebar:
             st.logout()
         st.divider()
     elif not _AUTH:
-        _LOCAL_NAME, _LOCAL_EMAIL = _local_user_identity()
-        if _LOCAL_NAME or _LOCAL_EMAIL:
-            # Local identity configured — show it like the signed-in block,
-            # with a small chip so it's clear this is offline/local mode.
-            st.markdown(
-                f'<div style="padding:0.2rem 0 0.6rem;">'
-                f'<p style="font-size:0.84rem;color:#f0f2f5;font-weight:600;margin:0;">'
-                f'{html.escape(_LOCAL_NAME or _LOCAL_EMAIL)}'
-                f'<span style="font-size:0.6rem;color:#e5a44b;background:rgba(229,164,75,0.12);'
-                f'border:1px solid rgba(229,164,75,0.25);border-radius:6px;padding:0.05rem 0.35rem;'
-                f'margin-left:0.4rem;vertical-align:middle;">LOCAL</span></p>'
-                f'<p style="font-size:0.7rem;color:#6b7280;margin:0.15rem 0 0;">'
-                f'{html.escape(_LOCAL_EMAIL)}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            st.divider()
-        else:
-            # No identity set — say so plainly, don't hide it.
-            st.markdown(
-                '<div style="background:rgba(229,164,75,0.08);border:1px solid '
-                'rgba(229,164,75,0.25);border-radius:8px;padding:0.6rem 0.75rem;'
-                'margin-bottom:0.9rem;">'
-                '<p style="font-size:0.72rem;color:#e5a44b;font-weight:600;margin:0;">'
-                'Local mode — Google Sign-In not configured</p>'
-                '<p style="font-size:0.68rem;color:#8b95a5;line-height:1.5;margin:0.3rem 0 0;">'
-                'Add an <code style="font-size:0.64rem;">[auth]</code> section (login + cloud) '
-                'or a <code style="font-size:0.64rem;">[local_user]</code> section (name + email '
-                'for local use) to <code style="font-size:0.64rem;">.streamlit/secrets.toml</code> '
-                '— see secrets.example.toml.</p>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
+        # Local mode is a deliberate fallback — but say so, don't hide it.
+        st.markdown(
+            '<div style="background:rgba(229,164,75,0.08);border:1px solid '
+            'rgba(229,164,75,0.25);border-radius:8px;padding:0.6rem 0.75rem;'
+            'margin-bottom:0.9rem;">'
+            '<p style="font-size:0.72rem;color:#e5a44b;font-weight:600;margin:0;">'
+            'Local mode — Google Sign-In not configured</p>'
+            '<p style="font-size:0.68rem;color:#8b95a5;line-height:1.5;margin:0.3rem 0 0;">'
+            'Add an <code style="font-size:0.64rem;">[auth]</code> section to '
+            '<code style="font-size:0.64rem;">.streamlit/secrets.toml</code> '
+            '(see secrets.example.toml) to enable login and cloud meetings.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("## ⚙️ Settings")
 
