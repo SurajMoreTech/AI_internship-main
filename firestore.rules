@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // A user may only ever touch their own document tree.
+    // request.auth.uid must equal the {uid} path segment — this is the
+    // database-level enforcement of "one user must never see another
+    // user's data". The firebase-admin SDK (server side) bypasses rules
+    // by design; these rules protect against any direct client access.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /meetings/{meetingId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Everything else: denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -14,3 +14,15 @@ vosk-model-small-en-us-0.15/
 
 # Environment variables
 .env
+
+# Streamlit secrets (never commit)
+.streamlit/secrets.toml
+
+# Firebase service account keys (never commit)
+*service-account*.json
+*serviceAccount*.json
+firebase-adminsdk*.json
+
+# AI Assistant configs & skills
+.agents/
+.claude/

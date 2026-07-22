@@ -3,7 +3,6 @@ import queue
 import sys
 import json
 import wave
-from xml.parsers.expat import model
 try:
     import sounddevice as sd
     SOUNDDEVICE_AVAILABLE = True
@@ -99,16 +98,10 @@ class AudioRecorder:
                 self.wav_file.writeframes(data)
             yield data
 
-# --- 3. Speech to Text Engine ---
 # --- 3. Speech to Text Engine (Groq Whisper) ---
 class STTEngine:
     def __init__(self, api_key=None):
         self.client = Groq(api_key=api_key) if api_key else None
-
-    def process_chunk(self, data):
-        # We don't do live processing with Whisper (it processes files)
-        # So we return None here to keep the loop running without crashing
-        return None
 
     def transcribe_file(self, filename):
         """Sends audio to Groq Whisper, splitting if necessary (max 25MB)."""
@@ -175,7 +168,6 @@ class STTEngine:
                 chunk_idx += 1
         return chunk_files
 
-# --- 4. Summarizer (Groq) ---
 # --- 4. Summarizer (Groq) ---
 class MeetingSummarizer:
     def __init__(self, api_key):
