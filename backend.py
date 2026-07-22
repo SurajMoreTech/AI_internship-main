@@ -204,6 +204,41 @@ class MeetingSummarizer:
             return f"Groq Error: {e}"
 
 # --- 5. Utilities (Save/Email) ---
+def audio_has_speech(filename, rms_threshold=180.0, peak_threshold=500, min_seconds=0.4):
+    """
+    Heuristic silence check for a 16-bit PCM WAV.
+
+    Whisper hallucinates filler like "Thank you." when handed silent or empty
+    audio (a headless/cloud server has no microphone, or the wrong local input
+    device is selected). Returning False here lets the caller warn the user
+    instead of appending a phantom transcript.
+
+    Fails OPEN: if the file can't be inspected, returns True so a genuine
+    recording is never blocked by this guard.
+    """
+    try:
+        import numpy as np
+
+        with wave.open(filename, "rb") as w:
+            n_frames = w.getnframes()
+            framerate = w.getframerate() or 16000
+            raw = w.readframes(n_frames)
+
+        duration = n_frames / float(framerate)
+        if duration < min_seconds or not raw:
+            return False
+
+        samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+        if samples.size == 0:
+            return False
+
+        rms = float(np.sqrt(np.mean(samples ** 2)))
+        peak = float(np.abs(samples).max())
+        return rms >= rms_threshold and peak >= peak_threshold
+    except Exception:
+        return True
+
+
 def save_to_md(text, filename="summary.md"):
     with open(filename, "w", encoding="utf-8") as f:
         f.write(text)

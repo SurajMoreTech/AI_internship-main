@@ -1,10 +1,12 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import html
+import os
 import time
 from backend import (
     AudioRecorder, STTEngine, MeetingSummarizer,
     save_to_md, send_email_func, SOUNDDEVICE_AVAILABLE,
+    audio_has_speech,
 )
 from audio_recorder_streamlit import audio_recorder
 
@@ -565,6 +567,38 @@ button[kind="secondary"] {
 details { background: #0c0e12 !important; border-color: #202530 !important; }
 details summary { color: #4b5563 !important; }
 .lmi-status-ok { color: #34d399 !important; font-weight: 600 !important; }
+
+/* ── Contrast boost: lift dim secondary text so it is readable on dark ── */
+.lmi-subtitle    { color: #b4bdca !important; }
+.lmi-stat-label  { color: #9aa4b2 !important; }
+.lmi-empty-label { color: #cbd2dd !important; }
+.lmi-empty-hint  { color: #8b94a2 !important; }
+.lmi-version     { color: #7c8494 !important; }
+.stTabs [data-baseweb="tab"] { color: #9aa4b2 !important; }
+details summary  { color: #cbd2dd !important; }
+button[kind="secondary"] { color: #cbd2dd !important; }
+
+/* Streamlit widget labels, radio options, captions, placeholders */
+[data-testid="stWidgetLabel"] p,
+.stRadio label p,
+.stRadio label {
+    color: #cbd2dd !important;
+}
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    color: #9aa4b2 !important;
+}
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {
+    color: #8b94a2 !important;
+    opacity: 1 !important;
+}
+
+/* Override too-dim inline colors used in custom markdown (dark mode only) */
+.stApp [style*="color:#4b5563"] { color: #9aa4b2 !important; }
+.stApp [style*="color:#6b7280"] { color: #a1abb9 !important; }
+.stApp [style*="color:#3d4757"] { color: #8b94a2 !important; }
+.stApp [style*="color:#2d3340"] { color: #7c8494 !important; }
 """
 
 if "Light" in _curr_theme:
@@ -789,6 +823,21 @@ def _auth_configured() -> bool:
     except FileNotFoundError:
         return False
 
+def _local_user_identity() -> tuple[str, str]:
+    """Local-mode identity (name, email) for when Google OAuth isn't wired up
+    for localhost. Read from a [local_user] section in the gitignored
+    .streamlit/secrets.toml, or LOCAL_USER_NAME / LOCAL_USER_EMAIL env vars.
+    Nothing here is committed — the public repo only ships the mechanism."""
+    name  = os.getenv("LOCAL_USER_NAME", "").strip()
+    email = os.getenv("LOCAL_USER_EMAIL", "").strip()
+    try:
+        lu = st.secrets.get("local_user", {})
+        name  = name  or str(lu.get("name", "")).strip()
+        email = email or str(lu.get("email", "")).strip()
+    except FileNotFoundError:
+        pass
+    return name, email
+
 # st.login/st.user need Streamlit >= 1.42 — degrade loudly, not with a crash
 _AUTH_SUPPORTED = hasattr(st, "login") and hasattr(st, "user")
 _AUTH = _auth_configured() and _AUTH_SUPPORTED
@@ -890,20 +939,39 @@ with st.sidebar:
             st.logout()
         st.divider()
     elif not _AUTH:
-        # Local mode is a deliberate fallback — but say so, don't hide it.
-        st.markdown(
-            '<div style="background:rgba(229,164,75,0.08);border:1px solid '
-            'rgba(229,164,75,0.25);border-radius:8px;padding:0.6rem 0.75rem;'
-            'margin-bottom:0.9rem;">'
-            '<p style="font-size:0.72rem;color:#e5a44b;font-weight:600;margin:0;">'
-            'Local mode — Google Sign-In not configured</p>'
-            '<p style="font-size:0.68rem;color:#8b95a5;line-height:1.5;margin:0.3rem 0 0;">'
-            'Add an <code style="font-size:0.64rem;">[auth]</code> section to '
-            '<code style="font-size:0.64rem;">.streamlit/secrets.toml</code> '
-            '(see secrets.example.toml) to enable login and cloud meetings.</p>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        _LOCAL_NAME, _LOCAL_EMAIL = _local_user_identity()
+        if _LOCAL_NAME or _LOCAL_EMAIL:
+            # Local identity configured — show it like the signed-in block,
+            # with a small chip so it's clear this is offline/local mode.
+            st.markdown(
+                f'<div style="padding:0.2rem 0 0.6rem;">'
+                f'<p style="font-size:0.84rem;color:#f0f2f5;font-weight:600;margin:0;">'
+                f'{html.escape(_LOCAL_NAME or _LOCAL_EMAIL)}'
+                f'<span style="font-size:0.6rem;color:#e5a44b;background:rgba(229,164,75,0.12);'
+                f'border:1px solid rgba(229,164,75,0.25);border-radius:6px;padding:0.05rem 0.35rem;'
+                f'margin-left:0.4rem;vertical-align:middle;">LOCAL</span></p>'
+                f'<p style="font-size:0.7rem;color:#6b7280;margin:0.15rem 0 0;">'
+                f'{html.escape(_LOCAL_EMAIL)}</p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            st.divider()
+        else:
+            # No identity set — say so plainly, don't hide it.
+            st.markdown(
+                '<div style="background:rgba(229,164,75,0.08);border:1px solid '
+                'rgba(229,164,75,0.25);border-radius:8px;padding:0.6rem 0.75rem;'
+                'margin-bottom:0.9rem;">'
+                '<p style="font-size:0.72rem;color:#e5a44b;font-weight:600;margin:0;">'
+                'Local mode — Google Sign-In not configured</p>'
+                '<p style="font-size:0.68rem;color:#8b95a5;line-height:1.5;margin:0.3rem 0 0;">'
+                'Add an <code style="font-size:0.64rem;">[auth]</code> section (login + cloud) '
+                'or a <code style="font-size:0.64rem;">[local_user]</code> section (name + email '
+                'for local use) to <code style="font-size:0.64rem;">.streamlit/secrets.toml</code> '
+                '— see secrets.example.toml.</p>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("## ⚙️ Settings")
 
@@ -1063,20 +1131,30 @@ with col_ctrl:
                         st.session_state.app_state   = "processing"
                         st.session_state.recorder.stop()
 
-                        with st.spinner("Sending to Whisper Large v3 via Groq…"):
-                            try:
-                                stt = STTEngine(api_key=_GROQ_KEY)
-                                text = stt.transcribe_file("temp_meeting.wav")
-                                ts   = time.strftime("%H:%M:%S")
-                                st.session_state.transcript += f"[{ts}] {text}\n"
-                                st.session_state.app_state = "transcribed"
-                            except Exception:
-                                # Never surface raw exception — may contain key fragments
-                                st.session_state.app_state = "error"
-                                st.error(
-                                    "Transcription failed. "
-                                    "Check your Groq account limits or audio quality."
-                                )
+                        if not audio_has_speech("temp_meeting.wav"):
+                            st.session_state.app_state = "idle"
+                            st.warning(
+                                "No speech detected — the recording was silent. "
+                                "The server microphone may be unavailable (this mode "
+                                "cannot work on a cloud server) or the wrong input "
+                                "device is selected. Switch to **Browser-based** mode "
+                                "to record from your own microphone."
+                            )
+                        else:
+                            with st.spinner("Sending to Whisper Large v3 via Groq…"):
+                                try:
+                                    stt = STTEngine(api_key=_GROQ_KEY)
+                                    text = stt.transcribe_file("temp_meeting.wav")
+                                    ts   = time.strftime("%H:%M:%S")
+                                    st.session_state.transcript += f"[{ts}] {text}\n"
+                                    st.session_state.app_state = "transcribed"
+                                except Exception:
+                                    # Never surface raw exception — may contain key fragments
+                                    st.session_state.app_state = "error"
+                                    st.error(
+                                        "Transcription failed. "
+                                        "Check your Groq account limits or audio quality."
+                                    )
                         st.rerun()
 
             # ── Browser-based ───────────────────────────────────────────────
@@ -1104,19 +1182,26 @@ with col_ctrl:
                     with open("temp_meeting.wav", "wb") as f:
                         f.write(audio_bytes)
 
-                    with st.spinner("Sending to Whisper Large v3 via Groq…"):
-                        try:
-                            stt  = STTEngine(api_key=_GROQ_KEY)
-                            text = stt.transcribe_file("temp_meeting.wav")
-                            ts   = time.strftime("%H:%M:%S")
-                            st.session_state.transcript += f"[{ts}] {text}\n"
-                            st.session_state.app_state = "transcribed"
-                        except Exception:
-                            st.session_state.app_state = "error"
-                            st.error(
-                                "Transcription failed. "
-                                "Check your Groq account limits or audio quality."
-                            )
+                    if not audio_has_speech("temp_meeting.wav"):
+                        st.session_state.app_state = "idle"
+                        st.warning(
+                            "No speech detected — the clip was silent. "
+                            "Check that your microphone is unmuted and try again."
+                        )
+                    else:
+                        with st.spinner("Sending to Whisper Large v3 via Groq…"):
+                            try:
+                                stt  = STTEngine(api_key=_GROQ_KEY)
+                                text = stt.transcribe_file("temp_meeting.wav")
+                                ts   = time.strftime("%H:%M:%S")
+                                st.session_state.transcript += f"[{ts}] {text}\n"
+                                st.session_state.app_state = "transcribed"
+                            except Exception:
+                                st.session_state.app_state = "error"
+                                st.error(
+                                    "Transcription failed. "
+                                    "Check your Groq account limits or audio quality."
+                                )
                     st.rerun()
 
     # Local recording re-render loop
