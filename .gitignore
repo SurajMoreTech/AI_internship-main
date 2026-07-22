@@ -26,3 +26,7 @@ firebase-adminsdk*.json
 # AI Assistant configs & skills
 .agents/
 .claude/
+
+# Handoff files (never push)
+handoff.md
+*handoff*.md
