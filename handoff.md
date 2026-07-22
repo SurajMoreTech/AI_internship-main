@@ -147,8 +147,7 @@ Skill source: sickn33/agentic-awesome-skills (DESIGN_VARIANCE: 8, MOTION_INTENSI
 | app.py | Main Streamlit app -- UI, CSS, auth gate, waveform, state management |
 | backend.py | AudioRecorder, STTEngine, MeetingSummarizer, email/file helpers |
 | db.py | Firestore data layer (firebase-admin, UID-scoped CRUD + search) |
-| firestore.rules | Database-level per-UID access rules (deploy manually in console) |
 | secrets.example.toml | Template documenting every secret key needed (safe to commit) |
 | .streamlit/secrets.toml | Local only, gitignored. GROQ_API_KEY, [auth], [firebase_service_account] |
-| .gitignore | Secrets + service-account JSON patterns |
+| .gitignore | Secrets + service-account JSON patterns + AI assistant configs |
 | requirements.txt | Python deps (streamlit>=1.42, Authlib, firebase-admin added) |
